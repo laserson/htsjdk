@@ -38,8 +38,12 @@ import java.math.BigInteger;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -48,6 +52,26 @@ public class SequenceUtil {
     public static final byte a = 'a', c = 'c', g = 'g', t = 't', n = 'n', A = 'A', C = 'C', G = 'G', T = 'T', N = 'N';
     public static final byte[] VALID_BASES_UPPER = new byte[]{A, C, G, T};
     public static final byte[] VALID_BASES_LOWER = new byte[]{a, c, g, t};
+    public static final byte[] VALID_BASES_WITH_N_UPPER = new byte[]{A, C, G, T, N};
+    public static final Map<Byte, Set<Byte>> iupacBaseMappings = new HashMap<Byte, Set<Byte>>();
+    static {
+        iupacBaseMappings.put(A, new HashSet<Byte>(Arrays.asList(A)));
+        iupacBaseMappings.put(C, new HashSet<Byte>(Arrays.asList(C)));
+        iupacBaseMappings.put(G, new HashSet<Byte>(Arrays.asList(G)));
+        iupacBaseMappings.put(T, new HashSet<Byte>(Arrays.asList(T)));
+        iupacBaseMappings.put((byte) 'M', new HashSet<Byte>(Arrays.asList(A, C)));
+        iupacBaseMappings.put((byte) 'R', new HashSet<Byte>(Arrays.asList(A, G)));
+        iupacBaseMappings.put((byte) 'W', new HashSet<Byte>(Arrays.asList(A, T)));
+        iupacBaseMappings.put((byte) 'S', new HashSet<Byte>(Arrays.asList(C, G)));
+        iupacBaseMappings.put((byte) 'Y', new HashSet<Byte>(Arrays.asList(C, T)));
+        iupacBaseMappings.put((byte) 'K', new HashSet<Byte>(Arrays.asList(G, T)));
+        iupacBaseMappings.put((byte) 'V', new HashSet<Byte>(Arrays.asList(A, C, G)));
+        iupacBaseMappings.put((byte) 'H', new HashSet<Byte>(Arrays.asList(A, C, T)));
+        iupacBaseMappings.put((byte) 'D', new HashSet<Byte>(Arrays.asList(A, G, T)));
+        iupacBaseMappings.put((byte) 'B', new HashSet<Byte>(Arrays.asList(C, G, T)));
+        iupacBaseMappings.put((byte) 'N', new HashSet<Byte>(Arrays.asList(A, C, G, T)));
+    };
+
 
     /**
      * Calculate the reverse complement of the specified sequence
@@ -62,8 +86,34 @@ public class SequenceUtil {
         return htsjdk.samtools.util.StringUtil.bytesToString(bases);
     }
 
-    /** Attempts to efficiently compare two bases stored as bytes for equality. */
+    /**
+     * Attempts to efficiently compare two bases stored as bytes for equality.
+     * First does simple comparison if the bases are both in [ACGTN]
+     * Then checks if the bases are any of the IUPAC ambiguous characters and handles matches based on inclusion in the ambiguity set
+     */
     public static boolean basesEqual(byte lhs, byte rhs) {
+        if (lhs == rhs) return true;
+
+        // Convert to UPPER case.
+        if (lhs > 90) lhs -= 32;
+        if (rhs > 90) rhs -= 32;
+        if ((isValidBase(lhs, VALID_BASES_WITH_N_UPPER) && (isValidBase(rhs, VALID_BASES_WITH_N_UPPER)))) {
+            // Both lhs and rhs are [A, C, G, T, N] - NOT iupac ambiguity codes
+            // TODO - is this ever called with '.' rather than 'N'??
+            return lhs == rhs;
+        }
+        // If here, one of the two bases is IUPAC ambiguous
+        final Set<Byte> rightSide = iupacBaseMappings.get(rhs);
+        for (byte b : iupacBaseMappings.get(lhs)) {
+            if (rightSide.contains(b)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Attempts to efficiently compare two bases stored as bytes for equality. */
+    public static boolean basesEqualOld(byte lhs, byte rhs) {
         if (lhs == rhs) return true;
         else {
             if (lhs > 90) lhs -= 32;
@@ -82,10 +132,11 @@ public class SequenceUtil {
 
     /** Returns true if the byte is in [acgtACGT]. */
     public static boolean isValidBase(final byte b) {
-        for (final byte validBase : VALID_BASES_UPPER) {
-            if (b == validBase) return true;
-        }
-        for (final byte validBase : VALID_BASES_LOWER) {
+        return isValidBase(b, VALID_BASES_UPPER) || isValidBase(b, VALID_BASES_LOWER);
+    }
+
+    private static boolean isValidBase(final byte b, final byte[] validBases) {
+        for (final byte validBase : validBases) {
             if (b == validBase) return true;
         }
         return false;

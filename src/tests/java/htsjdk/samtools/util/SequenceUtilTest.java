@@ -119,6 +119,28 @@ public class SequenceUtilTest {
         };
     }
 
+    @Test(dataProvider = "mismatchCountsDataProvider")
+    public void testCountMismatches(final String readString, final String cigar, final String reference, final int expectedNumMismatches) {
+        final SAMRecord rec = new SAMRecord(null);
+        rec.setReadName("test");
+        rec.setReadString(readString);
+        rec.setCigarString(cigar);
+
+        final byte[] refBases = StringUtil.stringToBytes(reference);
+        final int n = SequenceUtil.countMismatches(rec, refBases, -1);
+        Assert.assertEquals(n, expectedNumMismatches);
+    }
+
+    @DataProvider(name="mismatchCountsDataProvider")
+    public Object[][] testMakeMismatchCountsDataProvider() {
+        return new Object[][] {
+                {"ACGTACGTACGT", "12M", "ACGTACGTACGT", 0},
+                {"ACGTACGTACGT", "12M", "RCGTACGTACGT", 0},     // R->A or G
+                {"GCGTACGTACGT", "12M", "RCGTACGTACGT", 0},     // R->A or G
+                {"CCGTACGTACGT", "12M", "RCGTACGTACGT", 1}      // R->A or G
+        };
+    }
+
     @Test(dataProvider = "countInsertedAndDeletedBasesTestCases")
     public void testCountInsertedAndDeletedBases(final String cigarString, final int insertedBases, final int deletedBases) {
         final Cigar cigar = TextCigarCodec.decode(cigarString);
@@ -154,5 +176,84 @@ public class SequenceUtilTest {
         }
         final Set<String> expectedSet = new HashSet<String>(Arrays.asList(expectedKmers));
         Assert.assertTrue(actualSet.equals(expectedSet));
+    }
+
+    @Test(dataProvider = "basesEqualDataProvider")
+    public void testBasesEqual(final char base1, final char base2, final boolean expectedResult) {
+        final char[] base1UcLc = new char[] { toUpperCase(base1), toLowerCase(base1) };
+        final char[] base2UcLc = new char[] { toUpperCase(base2), toLowerCase(base2) };
+        // Test over all permutations - uc vs uc, uc vs lc, lc vs uc, lc vs lc
+        for (char theBase1 : base1UcLc) {
+            for (char theBase2 : base2UcLc) {
+                // Test that order does not matter
+                boolean result = SequenceUtil.basesEqual((byte) theBase1, (byte) theBase2);
+                Assert.assertEquals(result, expectedResult, "basesEqual test failed for '" + theBase1 + "' vs. '" + theBase2 + "'");
+
+                result = SequenceUtil.basesEqual((byte) theBase2, (byte) theBase1);
+                Assert.assertEquals(result, expectedResult, "basesEqual test failed for '" + theBase2 + "' vs. '" + theBase1 + "'");
+            }
+        }
+    }
+
+    @DataProvider(name="basesEqualDataProvider")
+    public Object[][] testBasesEqualDataProvider() {
+        return new Object[][] {
+                {'A', 'A', true},
+                {'A', 'a', true},
+                {'A', 'c', false},
+                {'a', 'c', false},
+                {'C', 'c', true},
+                {'G', 'g', true},
+                {'T', 't', true},
+                {'N', 'n', true},
+                {'R', 'A', true},
+                {'R', 'G', true},
+                {'R', 'C', false},
+                {'R', 'T', false},
+                {'Y', 'A', false},
+                {'Y', 'G', false},
+                {'Y', 'C', true},
+                {'Y', 'T', true},
+                {'S', 'A', false},
+                {'S', 'G', true},
+                {'S', 'C', true},
+                {'S', 'T', false},
+                {'W', 'A', true},
+                {'W', 'G', false},
+                {'W', 'C', false},
+                {'W', 'T', true},
+                {'K', 'A', false},
+                {'K', 'G', true},
+                {'K', 'C', false},
+                {'K', 'T', true},
+                {'M', 'A', true},
+                {'M', 'G', false},
+                {'M', 'C', true},
+                {'M', 'T', false},
+                {'B', 'A', false},
+                {'B', 'G', true},
+                {'B', 'C', true},
+                {'B', 'T', true},
+                {'D', 'A', true},
+                {'D', 'G', true},
+                {'D', 'C', false},
+                {'D', 'T', true},
+                {'H', 'A', true},
+                {'H', 'G', false},
+                {'H', 'C', true},
+                {'H', 'T', true},
+                {'V', 'A', true},
+                {'V', 'G', true},
+                {'V', 'C', true},
+                {'V', 'T', false}
+        };
+    }
+
+    private char toUpperCase(final char base) {
+        return base > 90 ? (char) (base - 32) : base;
+    }
+
+    private char toLowerCase(final char base) {
+        return (char) (toUpperCase(base) + 32);
     }
 }
